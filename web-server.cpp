@@ -99,7 +99,7 @@ void test()
 	cout << string(encoded_response.begin(), encoded_response.end());
 }
 
-string getFileType(string filename)
+string getContentType(string filename)
 {
 	size_t pos = filename.find_last_of('.');
 	string type;
@@ -173,13 +173,14 @@ void sendResponse(int client_sockfd, const HttpRequest& request)
 	struct stat fileStat;
     if (fstat(filefd, &fileStat) < 0) {
     	// Could not get file size information.
+    	cerr << "Error: Could not get requested file information: " << filename << endl;
 		send(client_sockfd, NOT_FOUND.c_str(), NOT_FOUND.size(), 0);
 		return;
     }
 
     // Build HTTP response
 	string ok = "HTTP/1.0 200 OK";
-	string content = "Content-type: " + getFileType(filename);
+	string content = "Content-type: " + getContentType(filename);
 	string content_length = "Content-length: " + to_string(fileStat.st_size);
 
 	HttpResponse response;
@@ -194,7 +195,19 @@ void sendResponse(int client_sockfd, const HttpRequest& request)
 	send(client_sockfd, &header[0], header.size(), 0);
 
 	// Send file
-	sendfile(client_sockfd, filefd, NULL, fileStat.st_size);
+	int total_sent = 0;
+	do {
+		int bytes_sent = sendfile(client_sockfd, filefd, NULL, fileStat.st_size);
+
+		if (bytes_sent < 0) {
+	    	// Error while sending.
+			cerr << "Error: Could not send requested file: " << filename << endl;
+			send(client_sockfd, NOT_FOUND.c_str(), NOT_FOUND.size(), 0);
+			return;
+		}
+		total_sent += bytes_sent;
+	} while (total_sent < fileStat.st_size);
+
 }
 
 void readRequest(int client_sockfd)
