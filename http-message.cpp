@@ -50,6 +50,11 @@ int HttpMessage::decodeHeaderLine(vector<char> line)
 	return 0;
 }
 
+int HttpMessage::decodeHeaderLine(string line)
+{
+	return decodeHeaderLine(vector<char>(line.begin(), line.end()));
+}
+
 void HttpMessage::setHeader(string key, string value)
 {
 	m_headers[key] = value;
@@ -100,6 +105,11 @@ int HttpRequest::decodeFirstLine(vector<char> line)
 	setVersion(string(it2, line.end()));
 
 	return 0;
+}
+
+int HttpRequest::decodeFirstLine(string line)
+{
+	return decodeFirstLine(vector<char>(line.begin(), line.end()));
 }
 
 vector<char> HttpRequest::encode()
@@ -161,6 +171,11 @@ int HttpResponse::decodeFirstLine(vector<char> line)
 	setDescription(string(it2, line.end()));
 
 	return 0;
+}
+
+int HttpResponse::decodeFirstLine(string line)
+{
+	return decodeFirstLine(vector<char>(line.begin(), line.end()));
 }
 
 vector<char> HttpResponse::encode()

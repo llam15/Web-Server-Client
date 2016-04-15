@@ -13,6 +13,11 @@ public:
 	virtual int decodeFirstLine(std::vector<char> line) = 0;
 
 	/**
+	 * Abstract function to decode first line of HTTP Message.
+	 */
+	virtual int decodeFirstLine(std::string line) = 0;
+
+	/**
 	 * Abstract function to encode the HTTP Message.
 	 */
 	virtual std::vector<char> encode() = 0;
@@ -27,6 +32,12 @@ public:
 	 * Returns 0 if success. -1 if error.
 	 */
 	int decodeHeaderLine(std::vector<char> line);
+
+	/**
+	 * Given a string, decode the header line
+	 * Returns 0 if success. -1 if error.
+	 */
+	int decodeHeaderLine(std::string line);
 
 	/**
 	 * Sets a header
@@ -74,6 +85,12 @@ public:
 	virtual int decodeFirstLine(std::vector<char> line);
 
 	/**
+	 * Decodes the first line of the HTTP request (given string)
+	 * Returns 0 if success. -1 if error.
+	 */
+	virtual int decodeFirstLine(std::string line);
+
+	/**
 	 * Encode the HTTP Request as a vector of chars.
 	 */
 	virtual std::vector<char> encode();
@@ -110,6 +127,12 @@ public:
 	 * Returns 0 if success. -1 if error.
 	 */
 	virtual int decodeFirstLine(std::vector<char> line);
+
+	/**
+	 * Decodes the first line of the HTTP request (given string)
+	 * Returns 0 if success. -1 if error.
+	 */
+	virtual int decodeFirstLine(std::string line);
 
 	/**
 	 * Encode the HTTP Response as a vector of chars.

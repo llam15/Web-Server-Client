@@ -25,7 +25,7 @@ using namespace std;
 
 char* HOSTNAME = (char*) "localhost";
 char* PORT = (char*) "4000";
-char* FILEDIR = (char*) ".";
+string FILEDIR =  ".";
 
 const string BAD_REQUEST =
 	"HTTP/1.0 400 Bad Request\r\n"
@@ -40,6 +40,15 @@ const string NOT_FOUND =
 	"Content-length: 48\r\n"
 	"\r\n"
 	"<html><body><h1>404 Not Found</h1></body></html>";
+
+const string TYPE_JPG   = "image/jpg";
+const string TYPE_JPEG  = "image/jpeg";
+const string TYPE_GIF   = "image/gif";
+const string TYPE_HTML  = "text/html";
+const string TYPE_OCT   = "application/octet-stream";
+const string TYPE_PDF   = "application/pdf";
+const string TYPE_PNG   = "image/png";
+const string TYPE_TXT   = "text/plain";
 
 void usage_msg()
 {
@@ -90,20 +99,112 @@ void test()
 	cout << string(encoded_response.begin(), encoded_response.end());
 }
 
+string getFileType(string filename)
+{
+	size_t pos = filename.find_last_of('.');
+	string type;
+
+	if (pos == string::npos || (pos+1) >= filename.size()) {
+		return "";
+	}
+
+	// Type = everything after last '.'
+	type = filename.substr(pos+1);
+	std::transform(type.begin(), type.end(), type.begin(), ::tolower);
+
+	if (type == "jpg")
+		return TYPE_JPG;
+	else if (type == "jpeg")
+		return TYPE_JPEG;
+	else if (type == "gif")
+		return TYPE_GIF;
+	else if (type == "html")
+		return TYPE_HTML;
+	else if (type == "pdf")
+		return TYPE_PDF;
+	else if (type == "png")
+		return TYPE_PNG;
+	else if (type == "txt")
+		return TYPE_TXT;
+	else return TYPE_OCT;
+
+}
+
 void sendResponse(int client_sockfd, const HttpRequest& request)
 {
-	// Open File and send response
+	int filefd;
+	string filename = request.getURL();
+
+	// Default to index.html if URL is "/"
+	if (filename == "/") {
+		filename = "index.html";
+	}
+	else {
+		// Throw away everything before/including the first single slash to get the filename.
+		// Start from second character b/c need to check one before and one after.
+		for (unsigned int i = 0; i < filename.size()-1; i++) {
+			if (filename[i] == '/' && filename[i+1] != '/' && (i == 0 || ((i > 0) && filename[i-1] != '/'))) {
+				filename = filename.substr(i+1);
+				break;
+			}
+		}
+	}
+
+	// Build full file path.
+	// Check if file directory already has ending slash
+	if (FILEDIR.back() == '/') {
+		filename = FILEDIR + filename;
+	}
+	else {
+		// Add slash between directory and file name.
+		filename = FILEDIR + "/" + filename;
+	}
+
+	// Open the file
+	filefd = open(filename.c_str(), O_RDONLY);
+
+	if (filefd == -1) {
+		// File not found
+		send(client_sockfd, NOT_FOUND.c_str(), NOT_FOUND.size(), 0);
+		return;
+	}
+
+	// Get file size information
+	struct stat fileStat;
+    if (fstat(filefd, &fileStat) < 0) {
+    	// Could not get file size information.
+		send(client_sockfd, NOT_FOUND.c_str(), NOT_FOUND.size(), 0);
+		return;
+    }
+
+    // Build HTTP response
+	string ok = "HTTP/1.0 200 OK";
+	string content = "Content-type: " + getFileType(filename);
+	string content_length = "Content-length: " + to_string(fileStat.st_size);
+
+	HttpResponse response;
+	response.decodeFirstLine(ok);
+	response.decodeHeaderLine(content);
+	response.decodeHeaderLine(content_length);
+
+	// Encode the header as a stream of bytes to send
+	vector<char> header = response.encode();
+
+	// Send HTTP Response headers
+	send(client_sockfd, &header[0], header.size(), 0);
+
+	// Send file
+	sendfile(client_sockfd, filefd, NULL, fileStat.st_size);
 }
 
 void readRequest(int client_sockfd)
 {
 	vector<char> buffer(4096);
-	// vector<char> encoded_response;
 	vector<char>::iterator it1, it2;
 	int bytes_read = 0;
 	HttpRequest request;
-	// HttpResponse response;
 
+	// Read request into a buffer
 	bytes_read = recv(client_sockfd, &buffer[0], buffer.size(), 0);
 	if (bytes_read == -1) {
 		cerr << "Error: Could not read from socket." << endl;
@@ -120,6 +221,7 @@ void readRequest(int client_sockfd)
 		return;
 	}
 
+	// Move iterator past "\r\n"
 	advance(it1, 2);
 
 	// Decode remaining headers.
@@ -152,17 +254,20 @@ void readRequest(int client_sockfd)
 				return;
 			}
 
+			// We have reached the end of the buffer.. but not the end of the request.
+			// Set iterator to buffer.end() so that we will read more from socket.
 			if (distance(it2, buffer.end()) < 2) {
 				it2 = buffer.end();
 			}
 			else {
+				// Otherwise advance past "\r\n" to next header.
 				it1 = next(it2, 2);
 			}
 		}
 	}
 
+	// Respond to the HTTP request
 	sendResponse(client_sockfd, request);
-	//send(client_sockfd, NOT_FOUND.c_str(), NOT_FOUND.size(), 0);
 	return;
 }
 
@@ -229,6 +334,7 @@ int main(int argc, char *argv[])
 			return -1;
 		}
 
+		// Create a child process to handle the client connection
 		int pid = fork();
 
 		if (pid < 0) {
