@@ -134,11 +134,14 @@ void sendResponse(int client_sockfd, const HttpRequest& request)
 {
 	int filefd;
 	string filename = request.getURL();
-
-	// Default to index.html if URL is "/"
-	if (filename == "/") {
-		filename = "index.html";
-	}
+    string specialcase = filename;
+    specialcase.erase(0, 7); //getting rid of http://
+    specialcase.erase(0, specialcase.find("/"));
+    
+    // Default to index.html if URL is "/"
+    if (specialcase == "/") {
+        filename = "index.html";
+    }
 	else {
 		// Throw away everything before/including the first single slash to get the filename.
 		// Start from second character b/c need to check one before and one after.
