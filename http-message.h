@@ -20,12 +20,12 @@ public:
 	/**
 	 * Abstract function to encode the HTTP Message.
 	 */
-	virtual std::vector<char> encode() = 0;
+	virtual std::vector<char> encode() const = 0;
 
 	/**
 	 * Abstract function to encode the HTTP Message headers.
 	 */
-	std::vector<char> encodeHeaders();
+	std::vector<char> encodeHeaders() const;
 
 	/**
 	 * Given a vector of bytes, decode the header line
@@ -67,7 +67,7 @@ public:
 	/**
 	 * Returns the value of the header specified by the key
 	 */
-	std::string getHeader(const std::string& key) const { return m_headers.find(key)->second; };
+	std::string getHeader(std::string key) const;
 
 private:
 	std::string m_version;
@@ -93,7 +93,7 @@ public:
 	/**
 	 * Encode the HTTP Request as a vector of chars.
 	 */
-	virtual std::vector<char> encode();
+	virtual std::vector<char> encode() const;
 
 	/**
 	 * Sets the URL of the HTTP Request
@@ -137,7 +137,7 @@ public:
 	/**
 	 * Encode the HTTP Response as a vector of chars.
 	 */
-	virtual std::vector<char> encode();
+	virtual std::vector<char> encode() const;
 
 	/**
 	 * Sets the status of the HTTP response

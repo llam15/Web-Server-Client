@@ -7,10 +7,10 @@ using namespace std;
  *           HTTP MESSAGE 	     	 *
  *************************************/
 
-vector<char> HttpMessage::encodeHeaders()
+vector<char> HttpMessage::encodeHeaders() const
 {
 	vector<char> headers;
-	for(map<string, string>::iterator it = m_headers.begin(); it != m_headers.end(); ++it) {
+	for(map<string, string>::const_iterator it = m_headers.begin(); it != m_headers.end(); ++it) {
 		string h = it->first + ": " + it->second + "\r\n";
 		headers.insert(headers.end(), h.begin(), h.end());
 	}
@@ -57,6 +57,8 @@ int HttpMessage::decodeHeaderLine(string line)
 
 void HttpMessage::setHeader(string key, string value)
 {
+	// Transform to lower case.
+	transform(key.begin(), key.end(), key.begin(), ::tolower);
 	m_headers[key] = value;
 }
 
@@ -65,9 +67,24 @@ void HttpMessage::setPayload(vector<char> payload)
 	m_payload = payload;
 }
 
-void HttpMessage::setVersion(std::string version)
+void HttpMessage::setVersion(string version)
 {
 	m_version = version;
+}
+
+string HttpMessage::getHeader(string key) const
+{
+
+	// Transform to lower case.
+	transform(key.begin(), key.end(), key.begin(), ::tolower);
+	map<string, string>::const_iterator header = m_headers.find(key);
+
+	// Header does not exist. Return empty string
+	if (header == m_headers.end()) {
+		return "";
+	}
+
+	return header->second;
 }
 
 /*************************************
@@ -112,7 +129,7 @@ int HttpRequest::decodeFirstLine(string line)
 	return decodeFirstLine(vector<char>(line.begin(), line.end()));
 }
 
-vector<char> HttpRequest::encode()
+vector<char> HttpRequest::encode() const
 {
 	vector<char> request;
 	vector<char> headers = encodeHeaders();
@@ -137,7 +154,7 @@ void HttpRequest::setURL(string url)
 	m_url = url;
 }
 
-void HttpRequest::setMethod(std::string method)
+void HttpRequest::setMethod(string method)
 {
 	m_method = method;
 }
@@ -178,7 +195,7 @@ int HttpResponse::decodeFirstLine(string line)
 	return decodeFirstLine(vector<char>(line.begin(), line.end()));
 }
 
-vector<char> HttpResponse::encode()
+vector<char> HttpResponse::encode() const
 {
 	vector<char> response;
 	vector<char> headers = encodeHeaders();

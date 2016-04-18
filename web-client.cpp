@@ -103,6 +103,10 @@ void readResponse(int sockfd) {
         if (it1 == it2) {
             // Now get the payload
             string content_length = response.getHeader("Content-Length");
+            if (content_length == "") {
+                cerr << "Error: Could not get content length" << endl;
+                return;
+            }
             int size = stoi(content_length);
             vector<char> payload(size);
             

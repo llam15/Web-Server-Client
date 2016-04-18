@@ -134,23 +134,24 @@ void sendResponse(int client_sockfd, const HttpRequest& request)
 {
 	int filefd;
 	string filename = request.getURL();
-    string specialcase = filename;
-    specialcase.erase(0, 7); //getting rid of http://
-    specialcase.erase(0, specialcase.find("/"));
-    
-    // Default to index.html if URL is "/"
-    if (specialcase == "/") {
-        filename = "index.html";
-    }
+	vector<char> after(256);
+
+	// Throw away everything before/including the first single slash to get the filename.
+	if (sscanf(filename.c_str(), "%*1[/]%s", &after[0]) == 0) {
+		// Nothing after first slash, meaning request is "/"
+		// Default to "index.html"
+		filename = "index.html";
+	}
 	else {
-		// Throw away everything before/including the first single slash to get the filename.
-		// Start from second character b/c need to check one before and one after.
-		for (unsigned int i = 0; i < filename.size()-1; i++) {
-			if (filename[i] == '/' && filename[i+1] != '/' && (i == 0 || ((i > 0) && filename[i-1] != '/'))) {
-				filename = filename.substr(i+1);
-				break;
-			}
-		}
+		filename = string(after.begin(), after.end());
+
+		// Remove extraneous nullbytes from end of string.
+		filename.erase(filename.find('\0'));
+	}
+
+	// Throw away extra slash at end of file name.
+	if (filename.back() == '/') {
+		filename = filename.substr(0, filename.size()-1);
 	}
 
 	// Build full file path.
