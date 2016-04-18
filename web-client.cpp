@@ -75,14 +75,17 @@ void downloadFile(HttpResponse response) { //404 400 200
 void readResponse(int sockfd) {
     vector<char> buffer(4096);
     vector<char>::iterator it1, it2;
-    int bytes_read = 0;
+    long bytes_read = 0;
     HttpResponse response;
-    
+    int totalbytes_read = 0;
     // Read request into a buffer
     bytes_read = recv(sockfd, &buffer[0], buffer.size(), 0);
     if (bytes_read == -1) {
         cerr << "Error: Could not read from socket." << endl;
         return;
+    }
+    else {
+        totalbytes_read += bytes_read;
     }
     
     // Find end of first line.
@@ -99,43 +102,35 @@ void readResponse(int sockfd) {
         // Consecutive CRLFs. End of HTTP Request
         if (it1 == it2) {
             // Now get the payload
-            string content_length = response.getHeader("Content-length");
+            string content_length = response.getHeader("Content-Length");
             int size = stoi(content_length);
+            vector<char> payload(size);
             
-            vector<char> payload;
             it1 = next(it1, 2); //go to beginning of the payload
-            
+            int bodybytes_read = totalbytes_read - (int) distance(buffer.begin(), it1);
+            it2 = next(it1, bodybytes_read);
+            payload.insert(payload.begin(), it1, it2);
+            payload.resize(size);
             //If the buffer is smaller than the payload size
-            while (distance(it1, buffer.end()) < size) {
-                
-                //Insert the data into the payload vector
-                payload.insert(payload.end(), it1, buffer.end());
-                
-                //Decrement size by number of bytes of data added to vector
-                size -= distance(it1, buffer.end());
+            while (bodybytes_read != size) {
                 
                 //Read in next bytes from socket
-                bytes_read = recv(sockfd, &buffer[0], buffer.size(), 0);
+                bytes_read = recv(sockfd, &payload[bodybytes_read], payload.size() - bodybytes_read, 0);
                 if (bytes_read == -1) {
                     cerr << "Error: Could not read from socket." << endl;
                     return;
                 }
-                
+                else {
+                    bodybytes_read += bytes_read;
+                }
                 //Set it1 to beginning of new buffer
-                it1 = buffer.begin();
-                
             }
-            
-            //When the buffer size is greater than remaining payload size
-            it2 = next(it1, size);
-            payload.insert(payload.end(), it1, it2);
-            
             response.setPayload(payload);
+            
             //Test output
             /*for (std::vector<char>::const_iterator i = payload.begin(); i != payload.end(); ++i)
              cout << *i;
              cout << endl;*/
-            
             downloadFile(response);
             break;
         }
@@ -147,6 +142,9 @@ void readResponse(int sockfd) {
             if (bytes_read == -1) {
                 cerr << "Error: Could not read from socket." << endl;
                 return;
+            }
+            else {
+                totalbytes_read += bytes_read;
             }
             
             it1 = buffer.begin();
