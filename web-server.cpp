@@ -56,49 +56,6 @@ void usage_msg()
 	exit(0);
 }
 
-void test()
-{
-	cout << "HOST: " << HOSTNAME << " | PORT: " << stoi(PORT) << " | FILEDIR: " << FILEDIR << endl << endl;
-
-	string line = "GET /index.html HTTP/1.0";
-	vector<char> firstline(line.begin(), line.end());
-
-	line = "Host: localhost:4000";
-	vector<char> testheader(line.begin(), line.end());
-
-	HttpRequest request;
-	if (request.decodeFirstLine(firstline) == -1) {
-		cout << "Error: HTTP Request Line 1" << endl;
-		exit(0);
-	}
-	if (request.decodeHeaderLine(testheader) == -1) {
-		cout << "Error: HTTP Request Header" << endl;
-		exit(0);
-	}
-
-	vector<char> encoded_request = request.encode();
-	cout << string(encoded_request.begin(), encoded_request.end());
-
-	line = "HTTP/1.1 200 OK";
-	vector<char> responseline(line.begin(), line.end());
-
-	line = "Server: Apache/2.4.18 (FreeBSD)";
-	vector<char> responseheader(line.begin(), line.end());
-
-	HttpResponse response;
-	if (response.decodeFirstLine(responseline) == -1) {
-		cout << "Error: HTTP Response Line 1" << endl;
-		exit(0);
-	}
-	if (response.decodeHeaderLine(responseheader) == -1) {
-		cout << "Error: HTTP Response Header" << endl;
-		exit(0);
-	}
-
-	vector<char> encoded_response = response.encode();
-	cout << string(encoded_response.begin(), encoded_response.end());
-}
-
 string getContentType(string filename)
 {
 	size_t pos = filename.find_last_of('.');
@@ -134,19 +91,24 @@ void sendResponse(int client_sockfd, const HttpRequest& request)
 {
 	int filefd;
 	string filename = request.getURL();
-	vector<char> after(256);
 
-	// Throw away everything before/including the first single slash to get the filename.
-	if (sscanf(filename.c_str(), "%*1[/]%s", &after[0]) == 0) {
-		// Nothing after first slash, meaning request is "/"
-		// Default to "index.html"
-		filename = "index.html";
+	// Throw away everything before the first single slash to get the filename.
+	for (unsigned int i = 0; i < filename.size(); i++) {
+		if (filename[i] == '/') {
+			// Check if there is a slash before or after.
+			if (((i > 0) && filename[i-1] == '/') ||
+				((i < filename.size()-1) && filename[i+1] == '/')){
+				continue;
+			}
+
+			filename = filename.substr(i);
+			break;
+		}
 	}
-	else {
-		filename = string(after.begin(), after.end());
 
-		// Remove extraneous nullbytes from end of string.
-		filename.erase(filename.find('\0'));
+	// Default to index.html
+	if (filename == "/") {
+		filename = "/index.html";
 	}
 
 	// Throw away extra slash at end of file name.
@@ -157,11 +119,11 @@ void sendResponse(int client_sockfd, const HttpRequest& request)
 	// Build full file path.
 	// Check if file directory already has ending slash
 	if (FILEDIR.back() == '/') {
-		filename = FILEDIR + filename;
+		// remove extraneous slash
+		filename = FILEDIR.substr(0, FILEDIR.size()-1) + filename;
 	}
 	else {
-		// Add slash between directory and file name.
-		filename = FILEDIR + "/" + filename;
+		filename = FILEDIR + filename;
 	}
 
 	// Open the file
