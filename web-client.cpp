@@ -124,6 +124,10 @@ void readResponse(int sockfd) {
                     cerr << "Error: Could not read from socket." << endl;
                     return;
                 }
+                else if (bytes_read == 0) {
+                    cerr << "Error: Socket has been closed by the server. The file name may be invalid." << endl;
+                    return;
+                }
                 else {
                     bodybytes_read += bytes_read;
                 }
@@ -145,6 +149,10 @@ void readResponse(int sockfd) {
             
             if (bytes_read == -1) {
                 cerr << "Error: Could not read from socket." << endl;
+                return;
+            }
+            else if (bytes_read == 0) {
+                cerr << "Error: Socket has been closed by the server. The file name may be invalid." << endl;
                 return;
             }
             else {
