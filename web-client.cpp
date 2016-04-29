@@ -35,17 +35,13 @@ void usage_msg()
     exit(0);
 }
 
-/*string createRequest(string URL) {
- return "asdf";
- }*/
-
 void downloadFile(HttpResponse response) { //404 400 200
     if (response.getStatus() == "404") { //404
-        cerr << "Error: The document is not found." << endl;
+        cerr << "Error: The document contained in: " << URL << " is not found." << endl;
         return;
     }
     else if (response.getStatus() == "400") { //400
-        cerr << "Error: There is a syntax error in the request." << endl;
+        cerr << "Error: There is a syntax error in the request: " << URL << endl;
         return;
     }
     else { //200 success, just download file
@@ -69,6 +65,8 @@ void downloadFile(HttpResponse response) { //404 400 200
         //Outputs the contents of the vector to the file
         ostream_iterator<char> it(output_file);
         copy(payload.begin(), payload.end(), it);
+        output_file.close();
+        cerr << "Successfully downloaded file: " << FILENAME << endl;
     }
 }
 
@@ -125,7 +123,7 @@ void readResponse(int sockfd) {
                     return;
                 }
                 else if (bytes_read == 0) {
-                    cerr << "Error: Socket has been closed by the server. The file name may be invalid." << endl;
+                    cerr << "Error: Socket has been closed by the server. The file name contained in: " << URL << " may be invalid." << endl;
                     return;
                 }
                 else {
@@ -152,7 +150,7 @@ void readResponse(int sockfd) {
                 return;
             }
             else if (bytes_read == 0) {
-                cerr << "Error: Socket has been closed by the server. The file name may be invalid." << endl;
+                cerr << "Error: Socket has been closed by the server. The file name contained in: " << URL << " may be invalid." << endl;
                 return;
             }
             else {
@@ -199,56 +197,56 @@ void parseURL(string urlstring, string& host, string& portname, string& filename
 
 int main(int argc, char *argv[])
 {
-    // Structs for resolving host names
-    struct addrinfo hints;
-    struct addrinfo *res_addr;
-    
-    // socket IDs
-    int sockfd;
-    
-    // Invalid number of arguments
-    if (argc != 2) {
+    int count = argc - 1;
+    int number = 1;
+    if (argc < 2) {
         usage_msg();
     }
-    else {
-        URL = argv[1];
+    while (count > 0) {
+        // Structs for resolving host names
+        struct addrinfo hints;
+        struct addrinfo *res_addr;
+        // socket IDs
+        int sockfd;
+        // Invalid number of arguments
+        string urlstring, host, filename, portname;
+        URL = argv[number];
+        
+        // Resolve hostname to IP address
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        
+        urlstring = (string) URL;
+        portname = "80";
+        parseURL(urlstring, host, portname, filename);
+        HOSTNAME = (char*) host.c_str();
+        PORT = (char*) portname.c_str();
+        FILENAME = (char*) filename.c_str();
+        
+        if (getaddrinfo(HOSTNAME, PORT, &hints, &res_addr) != 0) {
+            cerr << "Error: Could not resolve hostname: " << HOSTNAME << " to IP address." << endl;
+            return -1;
+        }
+        // Create socket
+        sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        
+        // Connect socket to server
+        if (connect(sockfd, res_addr->ai_addr, res_addr->ai_addrlen) == -1) {
+            cerr << "Error: Could not connect to server" << endl;
+            return -1;
+        }
+        string message = "GET " + urlstring + " HTTP/1.0\r\n"
+        "Host: " + host + "\r\n"
+        "Connection: close\r\n"
+        "User-Agent: Wget/1.15 (linux-gnu)\r\n"
+        "Accept: */*\r\n"
+        "\r\n";
+        send(sockfd, message.c_str(), message.size(), 0);
+        readResponse(sockfd);
+        close(sockfd);
+        count--;
+        number++;
     }
-    
-    // Resolve hostname to IP address
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    
-    string urlstring = (string) URL;
-    string host, filename;
-    string portname = "80";
-    parseURL(urlstring, host, portname, filename);
-    HOSTNAME = (char*) host.c_str();
-    PORT = (char*) portname.c_str();
-    FILENAME = (char*) filename.c_str();
-    
-    if (getaddrinfo(HOSTNAME, PORT, &hints, &res_addr) != 0) {
-        cerr << "Error: Could not resolve hostname to IP address." << endl;
-        return -1;
-    }
-    
-    // Create socket
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    
-    
-    // Connect socket to server
-    if (connect(sockfd, res_addr->ai_addr, res_addr->ai_addrlen) == -1) {
-        cerr << "Error: Could not connect to server" << endl;
-        return -1;
-    }
-    string message = "GET " + urlstring + " HTTP/1.0\r\n"
-    "Host: " + host + "\r\n"
-    "Connection: close\r\n"
-    "User-Agent: Wget/1.15 (linux-gnu)\r\n"
-    "Accept: */*\r\n"
-    "\r\n";
-    send(sockfd, message.c_str(), message.size(), 0);
-    readResponse(sockfd);
-    close(sockfd);
     return 0;
 }
