@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <ctime>
 
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -40,6 +41,12 @@ const string NOT_FOUND =
 	"Content-length: 48\r\n"
 	"\r\n"
 	"<html><body><h1>404 Not Found</h1></body></html>";
+const string REQUEST_TIMEOUT =
+	"HTTP/1.0 408 Request Timeout\r\n"
+	"Content-type: text/html\r\n"
+	"Content-length: 54\r\n"
+	"\r\n"
+	"<html><body><h1>408 Request Timeout</h1></body></html>";
 
 const string TYPE_JPG   = "image/jpg";
 const string TYPE_JPEG  = "image/jpeg";
@@ -49,6 +56,8 @@ const string TYPE_OCT   = "application/octet-stream";
 const string TYPE_PDF   = "application/pdf";
 const string TYPE_PNG   = "image/png";
 const string TYPE_TXT   = "text/plain";
+
+const double TIMEOUT = 60; // Timeout length in seconds
 
 void usage_msg()
 {
@@ -182,13 +191,22 @@ void readRequest(int client_sockfd)
 	vector<char>::iterator it1, it2;
 	int bytes_read = 0;
 	HttpRequest request;
+	clock_t start = clock();
 
 	// Read request into a buffer
-	bytes_read = recv(client_sockfd, &buffer[0], buffer.size(), 0);
-	if (bytes_read == -1) {
-		cerr << "Error: Could not read from socket." << endl;
-		return;
-	}
+	do {
+		bytes_read = recv(client_sockfd, &buffer[0], buffer.size(), 0);
+		if (bytes_read == -1) {
+			cerr << "Error: Could not read from socket." << endl;
+			return;
+		}
+
+		if ((bytes_read == 0) && ((clock() - start)/CLOCKS_PER_SEC >= TIMEOUT)) {
+			// Timed out
+			send(client_sockfd, REQUEST_TIMEOUT.c_str(), REQUEST_TIMEOUT.size(), 0);
+			return;
+		}	
+	} while (bytes_read == 0);
 
 	// Find end of first line.
 	it1 = find(buffer.begin(), buffer.end(), '\r');
@@ -214,12 +232,20 @@ void readRequest(int client_sockfd)
 
 		// We reached end of buffer, but only received part of the message!
 		if (it2 == buffer.end()) {
-			bytes_read = recv(client_sockfd, &buffer[0], buffer.size(), 0);
+			start = clock();
+			do {
+				bytes_read = recv(client_sockfd, &buffer[0], buffer.size(), 0);
+				if (bytes_read == -1) {
+					cerr << "Error: Could not read from socket." << endl;
+					return;
+				}
 
-			if (bytes_read == -1) {
-				cerr << "Error: Could not read from socket." << endl;
-				return;
-			}
+				if ((bytes_read == 0) && ((clock() - start)/CLOCKS_PER_SEC >= TIMEOUT)) {
+					// Timed out
+					send(client_sockfd, REQUEST_TIMEOUT.c_str(), REQUEST_TIMEOUT.size(), 0);
+					return;
+				}	
+			} while (bytes_read == 0);
 
 			it1 = buffer.begin();
 			continue;

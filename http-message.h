@@ -23,7 +23,7 @@ public:
 	virtual std::vector<char> encode() const = 0;
 
 	/**
-	 * Abstract function to encode the HTTP Message headers.
+	 * Encodes the HTTP Message headers as a vector of chars.
 	 */
 	std::vector<char> encodeHeaders() const;
 

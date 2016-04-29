@@ -7,8 +7,6 @@ By default (all target), it makes the `web-server` and `web-client` executables.
 
 It provides a `clean` target, and `tarball` target to create the submission file as well.
 
-You will need to modify the `Makefile` to add your userid for the `.tar.gz` turn-in at the top of the file.
-
 ## web-server.cpp
 
 Contains all of the code for the web server

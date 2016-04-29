@@ -1,7 +1,7 @@
 CXX=g++
 CXXOPTIMIZE= -O2
 CXXFLAGS= -g -Wall -pthread -std=c++11 $(CXXOPTIMIZE)
-USERID=EDIT_MAKE_FILE
+USERID=804302387
 CLASSES= http-message.h http-message.cpp
 
 all: web-server web-client
@@ -16,4 +16,4 @@ clean:
 	rm -rf *.o *~ *.gch *.swp *.dSYM web-server web-client *.tar.gz
 
 tarball: clean
-	tar -cvf $(USERID).tar.gz *
+	tar --exclude='./Report' --exclude='Vagrantfile' -cvf $(USERID).tar.gz * 
