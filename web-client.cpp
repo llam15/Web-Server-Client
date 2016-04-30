@@ -105,7 +105,7 @@ void readResponse(int sockfd) {
             break;
         }
     }
-
+    cout << string(buffer.begin(), buffer.end()) << endl;
     response.decodeFirstLine(vector<char>(buffer.begin(), it1));
 
     // Try to move iterator past CRLF to the next header.
@@ -156,7 +156,7 @@ void readResponse(int sockfd) {
             }
 
             //If the buffer is smaller than the payload size
-            while (bodybytes_read != size) {
+            while (bodybytes_read <= size) {
                 //Read in next bytes from socket
                 bytes_read = recv(sockfd, &payload[bodybytes_read], payload.size() - bodybytes_read, 0);
 

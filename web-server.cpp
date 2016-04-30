@@ -40,7 +40,7 @@ const string NOT_FOUND =
 	"HTTP/1.0 404 Not Found\r\n"
 	"Content-type: text/html\r\n"
 	"Content-length: 48\r\n"
-	;
+	"\r\n";
 const string REQUEST_TIMEOUT =
 	"HTTP/1.0 408 Request Timeout\r\n"
 	"Content-type: text/html\r\n"
