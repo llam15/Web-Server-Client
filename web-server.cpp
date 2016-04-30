@@ -12,8 +12,9 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <ctime>
 
+
+#include <sys/time.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/sendfile.h>
@@ -39,8 +40,7 @@ const string NOT_FOUND =
 	"HTTP/1.0 404 Not Found\r\n"
 	"Content-type: text/html\r\n"
 	"Content-length: 48\r\n"
-	"\r\n"
-	"<html><body><h1>404 Not Found</h1></body></html>";
+	;
 const string REQUEST_TIMEOUT =
 	"HTTP/1.0 408 Request Timeout\r\n"
 	"Content-type: text/html\r\n"
@@ -57,11 +57,11 @@ const string TYPE_PDF   = "application/pdf";
 const string TYPE_PNG   = "image/png";
 const string TYPE_TXT   = "text/plain";
 
-const double TIMEOUT = 60; // Timeout length in seconds
+const timeval TIMEOUT{5, 0};
 
 void usage_msg()
 {
-	cout << "usage: web-server [hostname] [port] [file-dir]" << endl;
+	cerr << "usage: web-server [hostname] [port] [file-dir]" << endl;
 	exit(0);
 }
 
@@ -102,7 +102,8 @@ void sendResponse(int client_sockfd, const HttpRequest& request)
 	string filename = request.getURL();
 
 	// Throw away everything before the first single slash to get the filename.
-	for (unsigned int i = 0; i < filename.size(); i++) {
+	unsigned int i;
+	for (i = 0; i < filename.size(); i++) {
 		if (filename[i] == '/') {
 			// Check if there is a slash before or after.
 			if (((i > 0) && filename[i-1] == '/') ||
@@ -116,7 +117,7 @@ void sendResponse(int client_sockfd, const HttpRequest& request)
 	}
 
 	// Default to index.html
-	if (filename == "/") {
+	if (filename == "/" || i == filename.size()) {
 		filename = "/index.html";
 	}
 
@@ -190,26 +191,40 @@ void readRequest(int client_sockfd)
 	vector<char> buffer(4096);
 	vector<char>::iterator it1, it2;
 	int bytes_read = 0;
+	int read_location = 0;
+	int dist_from_end = 0;
+	bool throw_away_next = false;
 	HttpRequest request;
-	clock_t start = clock();
 
 	// Read request into a buffer
-	do {
-		bytes_read = recv(client_sockfd, &buffer[0], buffer.size(), 0);
+	while (1) {
+		bytes_read = recv(client_sockfd, &buffer[read_location], buffer.size()-read_location, 0);
+
+		// If errno set, then time out
+		if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+			// Timed out
+			send(client_sockfd, REQUEST_TIMEOUT.c_str(), REQUEST_TIMEOUT.size(), 0);
+			return;
+		}
+
 		if (bytes_read == -1) {
 			cerr << "Error: Could not read from socket." << endl;
 			return;
 		}
 
-		if ((bytes_read == 0) && ((clock() - start)/CLOCKS_PER_SEC >= TIMEOUT)) {
-			// Timed out
-			send(client_sockfd, REQUEST_TIMEOUT.c_str(), REQUEST_TIMEOUT.size(), 0);
-			return;
-		}	
-	} while (bytes_read == 0);
+		// Find end of first line.
+		it1 = find(buffer.begin(), buffer.end(), '\r');
 
-	// Find end of first line.
-	it1 = find(buffer.begin(), buffer.end(), '\r');
+		// If could not find end of first line, then double buffer size and 
+		// try to read more.
+		if (it1 == buffer.end()) {
+			read_location = buffer.size();
+			buffer.resize(buffer.size()*2);
+		}
+		else {
+			break;
+		}
+	}
 
 	// Decode first line.
 	if (request.decodeFirstLine(vector<char>(buffer.begin(), it1)) == -1) {
@@ -218,8 +233,21 @@ void readRequest(int client_sockfd)
 		return;
 	}
 
-	// Move iterator past "\r\n"
-	advance(it1, 2);
+	// Try to move iterator past CRLF to the next header.
+	// Check if possible.
+	dist_from_end = distance(it1, buffer.end());
+	if (dist_from_end < 2) {
+        if (dist_from_end == 1) {
+            // We only received the \r of the CRLF. Remember to throw away next
+            // character (which should be a new line) when read from socket again.
+            throw_away_next = true;
+        }
+		it1 = buffer.end();
+	}
+	else {
+		// Otherwise advance past "\r\n" to next header.
+		advance(it1, 2);
+	}
 
 	// Decode remaining headers.
 	while (1) {
@@ -232,22 +260,36 @@ void readRequest(int client_sockfd)
 
 		// We reached end of buffer, but only received part of the message!
 		if (it2 == buffer.end()) {
-			start = clock();
 			do {
-				bytes_read = recv(client_sockfd, &buffer[0], buffer.size(), 0);
+				// Get beginning of incomplete header
+				read_location = distance(it1, buffer.end());
+				// Copy remaining incomplete headers to beginning of buffer
+				copy(it1, buffer.end(), buffer.begin());
+
+				// Read in next section of request
+				bytes_read = recv(client_sockfd, &buffer[read_location], buffer.size()-read_location, 0);
+
+				// If errno set, then timeout
+				if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+					// Timed out
+					send(client_sockfd, REQUEST_TIMEOUT.c_str(), REQUEST_TIMEOUT.size(), 0);
+					return;
+				}
+
 				if (bytes_read == -1) {
 					cerr << "Error: Could not read from socket." << endl;
 					return;
 				}
-
-				if ((bytes_read == 0) && ((clock() - start)/CLOCKS_PER_SEC >= TIMEOUT)) {
-					// Timed out
-					send(client_sockfd, REQUEST_TIMEOUT.c_str(), REQUEST_TIMEOUT.size(), 0);
-					return;
-				}	
 			} while (bytes_read == 0);
-
-			it1 = buffer.begin();
+			
+			// If throw away next, that means we only got the first half of CRLF previously.
+			// Ignore the first character (which should be a \n)
+			if (throw_away_next) {
+				it1 = buffer.begin()+1;
+			}
+			else {
+				it1 = buffer.begin();
+			}
 			continue;
 		}
 
@@ -261,8 +303,14 @@ void readRequest(int client_sockfd)
 
 			// We have reached the end of the buffer.. but not the end of the request.
 			// Set iterator to buffer.end() so that we will read more from socket.
-			if (distance(it2, buffer.end()) < 2) {
-				it2 = buffer.end();
+			dist_from_end = distance(it2, buffer.end());
+			if (dist_from_end < 2) {
+		        if (dist_from_end == 1) {
+		            // We only received the \r of the CRLF. Remember to throw away next
+		            // character (which should be a new line) when read from socket again.
+		            throw_away_next = true;
+		        }
+				it1 = buffer.end();
 			}
 			else {
 				// Otherwise advance past "\r\n" to next header.
@@ -336,6 +384,12 @@ int main(int argc, char *argv[])
 
 		if (client_sockfd == -1) {
 			cerr << "Error: Could not accept connection";
+			return -1;
+		}
+
+		if (setsockopt(client_sockfd, SOL_SOCKET, SO_RCVTIMEO, &TIMEOUT, sizeof(timeval)) == -1) {
+			cerr << "Error: Could not set socket options" << endl;
+			close(client_sockfd);
 			return -1;
 		}
 

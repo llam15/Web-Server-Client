@@ -31,11 +31,11 @@ char* URL;
 
 void usage_msg()
 {
-    cout << "usage: web-client [URL]" << endl;
+    cerr << "usage: web-client [URL]" << endl;
     exit(0);
 }
 
-void downloadFile(HttpResponse response) { //404 400 200
+void downloadFile(HttpResponse response) { //404 400 200 408
     if (response.getStatus() == "404") { //404
         cerr << "Error: The document contained in: " << URL << " is not found." << endl;
         return;
@@ -44,10 +44,14 @@ void downloadFile(HttpResponse response) { //404 400 200
         cerr << "Error: There is a syntax error in the request: " << URL << endl;
         return;
     }
+    else if (response.getStatus() == "408") { //408
+        cerr << "Error: The request timed out." << endl;
+        return;
+    }
     else { //200 success, just download file
         string filenamestring(FILENAME);
         //if file is /, change it to index.hmtl
-        if (filenamestring == "/") {
+        if (filenamestring == "/" || filenamestring.size() == 0) {
             FILENAME = (char*) "index.html";
         }
         else {
@@ -74,25 +78,52 @@ void readResponse(int sockfd) {
     vector<char> buffer(4096);
     vector<char>::iterator it1, it2;
     long bytes_read = 0;
+    int read_location = 0;
+    int dist_from_end = 0;
+    bool throw_away_next = false;
     HttpResponse response;
-    int totalbytes_read = 0;
+
     // Read request into a buffer
-    bytes_read = recv(sockfd, &buffer[0], buffer.size(), 0);
-    if (bytes_read == -1) {
-        cerr << "Error: Could not read from socket." << endl;
-        return;
+    while (1) {
+        bytes_read = recv(sockfd, &buffer[read_location], buffer.size()-read_location, 0);
+
+        if (bytes_read == -1) {
+            cerr << "Error: Could not read from socket." << endl;
+            return;
+        }
+
+        // Find end of first line.
+        it1 = find(buffer.begin(), buffer.end(), '\r');
+
+        // If could not find end of first line, then double buffer size and
+        // try to read more.
+        if (it1 == buffer.end()) {
+            read_location = buffer.size();
+            buffer.resize(buffer.size()*2);
+        }
+        else {
+            break;
+        }
+    }
+
+    response.decodeFirstLine(vector<char>(buffer.begin(), it1));
+
+    // Try to move iterator past CRLF to the next header.
+    // Check if possible.
+    dist_from_end = distance(it1, buffer.end());
+    if (dist_from_end < 2) {
+        if (dist_from_end == 1) {
+            // We only received the \r of the CRLF. Remember to throw away next
+            // character (which should be a new line) when read from socket again.
+            throw_away_next = true;
+        }
+        it1 = buffer.end();
     }
     else {
-        totalbytes_read += bytes_read;
+        // Otherwise advance past "\r\n" to next header.
+        advance(it1, 2);
     }
-    
-    // Find end of first line.
-    it1 = find(buffer.begin(), buffer.end(), '\r');
-    response.decodeFirstLine(vector<char>(buffer.begin(), it1));
-    
-    // Move iterator past "\r\n"
-    advance(it1, 2);
-    
+
     // Decode remaining headers.
     while (1) {
         it2 = find(it1, buffer.end(), '\r');
@@ -107,17 +138,28 @@ void readResponse(int sockfd) {
             }
             int size = stoi(content_length);
             vector<char> payload(size);
-            
-            it1 = next(it1, 2); //go to beginning of the payload
-            int bodybytes_read = totalbytes_read - (int) distance(buffer.begin(), it1);
+            dist_from_end = distance(it1, buffer.end());
+            if (dist_from_end < 2) {
+                if (dist_from_end == 1)
+                    throw_away_next = true;
+                it1 = buffer.end();
+            }
+            else {
+                it1 = next(it1, 2); //go to beginning of the payload
+            }
+            int bodybytes_read = distance(it1, buffer.end());
             it2 = next(it1, bodybytes_read);
             payload.insert(payload.begin(), it1, it2);
             payload.resize(size);
+            if (throw_away_next) {
+                bytes_read = recv(sockfd, &buffer[0], 1, 0);
+            }
+
             //If the buffer is smaller than the payload size
             while (bodybytes_read != size) {
-                
                 //Read in next bytes from socket
                 bytes_read = recv(sockfd, &payload[bodybytes_read], payload.size() - bodybytes_read, 0);
+
                 if (bytes_read == -1) {
                     cerr << "Error: Could not read from socket." << endl;
                     return;
@@ -132,19 +174,22 @@ void readResponse(int sockfd) {
                 //Set it1 to beginning of new buffer
             }
             response.setPayload(payload);
-            
-            //Test output
-            /*for (std::vector<char>::const_iterator i = payload.begin(); i != payload.end(); ++i)
-             cout << *i;
-             cout << endl;*/
+
             downloadFile(response);
             break;
         }
         
         // We reached end of buffer, but only received part of the message!
         if (it2 == buffer.end()) {
-            bytes_read = recv(sockfd, &buffer[0], buffer.size(), 0);
+            // Get beginning of incomplete header
+            read_location = distance(it1, buffer.end());
             
+            // Copy remaining incomplete headers to beginning of buffer
+            copy(it1, buffer.end(), buffer.begin());
+
+            // Read in next section of request
+            bytes_read = recv(sockfd, &buffer[read_location], buffer.size()-read_location, 0);
+
             if (bytes_read == -1) {
                 cerr << "Error: Could not read from socket." << endl;
                 return;
@@ -153,11 +198,15 @@ void readResponse(int sockfd) {
                 cerr << "Error: Socket has been closed by the server. The file name contained in: " << URL << " may be invalid." << endl;
                 return;
             }
-            else {
-                totalbytes_read += bytes_read;
+
+            // If throw away next, that means we only got the first half of CRLF previously.
+            // Ignore the first character (which should be a \n)
+            if (throw_away_next) {
+                it1 = buffer.begin()+1;
             }
-            
-            it1 = buffer.begin();
+            else {
+                it1 = buffer.begin();
+            }
             continue;
         }
         
@@ -167,8 +216,14 @@ void readResponse(int sockfd) {
             
             // We have reached the end of the buffer.. but not the end of the request.
             // Set iterator to buffer.end() so that we will read more from socket.
-            if (distance(it2, buffer.end()) < 2) {
-                it2 = buffer.end();
+            dist_from_end = distance(it2, buffer.end());
+            if (dist_from_end < 2) {
+                if (dist_from_end == 1) {
+                    // We only received the \r of the CRLF. Remember to throw away next
+                    // character (which should be a new line) when read from socket again.
+                    throw_away_next = true;
+                }
+                it1 = buffer.end();
             }
             else {
                 // Otherwise advance past "\r\n" to next header.
