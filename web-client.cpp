@@ -80,6 +80,7 @@ void readResponse(int sockfd) {
     long bytes_read = 0;
     int read_location = 0;
     int dist_from_end = 0;
+    int totalbytes_read = 0;
     bool throw_away_next = false;
     HttpResponse response;
 
@@ -91,6 +92,8 @@ void readResponse(int sockfd) {
             cerr << "Error: Could not read from socket." << endl;
             return;
         }
+
+        totalbytes_read += bytes_read;
 
         // Find end of first line.
         it1 = find(buffer.begin(), buffer.end(), '\r');
@@ -105,7 +108,6 @@ void readResponse(int sockfd) {
             break;
         }
     }
-    cout << string(buffer.begin(), buffer.end()) << endl;
     response.decodeFirstLine(vector<char>(buffer.begin(), it1));
 
     // Try to move iterator past CRLF to the next header.
@@ -147,7 +149,7 @@ void readResponse(int sockfd) {
             else {
                 it1 = next(it1, 2); //go to beginning of the payload
             }
-            int bodybytes_read = distance(it1, buffer.end());
+            int bodybytes_read = totalbytes_read - (int) distance(buffer.begin(), it1);
             it2 = next(it1, bodybytes_read);
             payload.insert(payload.begin(), it1, it2);
             payload.resize(size);
@@ -156,7 +158,7 @@ void readResponse(int sockfd) {
             }
 
             //If the buffer is smaller than the payload size
-            while (bodybytes_read <= size) {
+            while (bodybytes_read < size) {
                 //Read in next bytes from socket
                 bytes_read = recv(sockfd, &payload[bodybytes_read], payload.size() - bodybytes_read, 0);
 
@@ -198,6 +200,8 @@ void readResponse(int sockfd) {
                 cerr << "Error: Socket has been closed by the server. The file name contained in: " << URL << " may be invalid." << endl;
                 return;
             }
+
+            totalbytes_read += bytes_read;
 
             // If throw away next, that means we only got the first half of CRLF previously.
             // Ignore the first character (which should be a \n)
