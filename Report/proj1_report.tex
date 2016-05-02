@@ -127,6 +127,9 @@ Kevin Huynh, 704-283-105}
                         portion of the message is completely received, then the
                         first iterator is set back to the beginning of the
                         buffer.
+
+                    \item If the ``recv" function call continuously returns 0,
+                        then the client will timeout.
                     
                     \item The client implements some logic so that if there are
                         two consecutive CRLF bytes, it knows that any more data
@@ -196,6 +199,11 @@ Kevin Huynh, 704-283-105}
     cause the payload to become corrupted or incomplete. Another problem we
     faced was integrating the server and client together and not knowing
     whether bugs that occurred originated in the client or server source code.
+
+    Timeout on the server would work properly by setting the socket options.
+    However when applied to the client, we would not observe the same results.
+    Because of this we had to do a more primitive way of creating timeout by
+    comparing timestamps for a fixed number of seconds.
 
 \section{Testing}
     When we built our web server, we tested it with a web browser first. We
