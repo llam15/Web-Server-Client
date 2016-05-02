@@ -85,21 +85,21 @@ void readResponse(int sockfd) {
     int totalbytes_read = 0;
     bool throw_away_next = false;
     HttpResponse response;
-    
+
     // Read request into a buffer
     while (1) {
         bytes_read = recv(sockfd, &buffer[read_location], buffer.size()-read_location, 0);
-        
+
         if (bytes_read == -1) {
             cerr << "Error: Could not read from socket." << endl;
             return;
         }
-        
+
         totalbytes_read += bytes_read;
-        
+
         // Find end of first line.
         it1 = find(buffer.begin(), buffer.end(), '\r');
-        
+
         // If could not find end of first line, then double buffer size and
         // try to read more.
         if (it1 == buffer.end()) {
@@ -110,9 +110,14 @@ void readResponse(int sockfd) {
             break;
         }
     }
-    
+
+    /*for (int i = 0; i < 80; i++) {
+        cout << buffer[i] << " ";
+
+    }*/
+
     response.decodeFirstLine(vector<char>(buffer.begin(), it1));
-    
+
     // Try to move iterator past CRLF to the next header.
     // Check if possible.
     dist_from_end = distance(it1, buffer.end());
@@ -128,7 +133,7 @@ void readResponse(int sockfd) {
         // Otherwise advance past "\r\n" to next header.
         advance(it1, 2);
     }
-    
+
     // Decode remaining headers.
     while (1) {
         it2 = find(it1, buffer.end(), '\r');
@@ -159,7 +164,7 @@ void readResponse(int sockfd) {
             if (throw_away_next) {
                 bytes_read = recv(sockfd, &buffer[0], 1, 0);
             }
-            
+
             bool data_read = true;
             clock_t start = clock();
             clock_t current_time = clock();
@@ -167,7 +172,7 @@ void readResponse(int sockfd) {
             while (bodybytes_read < size && (((current_time - start)/ (double) CLOCKS_PER_SEC) <  timeout_duration) )  {
                 //Read in next bytes from socket
                 bytes_read = recv(sockfd, &payload[bodybytes_read], payload.size() - bodybytes_read, 0);
-                
+
                 if (bytes_read == -1) {
                     cerr << "Error: Could not read from socket." << endl;
                     return;
@@ -180,24 +185,24 @@ void readResponse(int sockfd) {
                     bodybytes_read += bytes_read;
                     start = current_time = clock();
                     data_read = true;
-                    
+
                 }
                 //Set it1 to beginning of new buffer
             }
-            
+
             if (data_read == false) {
                 //cerr << "Error: Socket has been closed by the server. The file name contained in: " << URL << " may be invalid." << endl;
-                cerr << "Error: The request timed out." << endl;
+                cerr << "Error: The request timed out. File name may be invalid." << endl;
                 return;
             }
-            
+
             response.setPayload(payload);
-            
+
             downloadFile(response);
             break;
-            
-            
-            
+          
+
+
         }
         
         // We reached end of buffer, but only received part of the message!
@@ -207,21 +212,51 @@ void readResponse(int sockfd) {
             
             // Copy remaining incomplete headers to beginning of buffer
             copy(it1, buffer.end(), buffer.begin());
-            
-            // Read in next section of request
-            bytes_read = recv(sockfd, &buffer[read_location], buffer.size()-read_location, 0);
-            
-            if (bytes_read == -1) {
-                cerr << "Error: Could not read from socket." << endl;
+
+
+            clock_t start = clock();
+            clock_t current_time = clock();
+
+            bool data_read = true;
+
+            while(((current_time - start)/ (double) CLOCKS_PER_SEC) <  timeout_duration) {
+                // Read in next section of request
+                bytes_read = recv(sockfd, &buffer[read_location], buffer.size()-read_location, 0);
+
+                if (bytes_read == -1) {
+                    cerr << "Error: Could not read from socket." << endl;
+                    return;
+                }
+                else if (bytes_read == 0) {
+                    //cerr << "Error: Socket has been closed by the server. The file name contained in: " << URL << " may be invalid." << endl;
+                    current_time = clock();
+                    data_read = false;
+                }
+                else {
+                    totalbytes_read += bytes_read;
+                    data_read = true;
+                    // If throw away next, that means we only got the first half of CRLF previously.
+                    // Ignore the first character (which should be a \n)
+                    if (throw_away_next) {
+                        it1 = buffer.begin()+1;
+                    }
+                    else {
+                        it1 = buffer.begin();
+                    }
+                    break;
+                }
+            }
+
+            if (data_read == false) {
+                //cerr << "Error: Socket has been closed by the server. The file name contained in: " << URL << " may be invalid." << endl;
+                cerr << "Error: The request timed out. File name may be invalid." << endl;
                 return;
             }
-            else if (bytes_read == 0) {
-                cerr << "Error: Socket has been closed by the server. The file name contained in: " << URL << " may be invalid." << endl;
-                return;
-            }
-            
-            totalbytes_read += bytes_read;
-            
+
+            continue;
+
+            /*totalbytes_read += bytes_read;
+
             // If throw away next, that means we only got the first half of CRLF previously.
             // Ignore the first character (which should be a \n)
             if (throw_away_next) {
@@ -230,7 +265,7 @@ void readResponse(int sockfd) {
             else {
                 it1 = buffer.begin();
             }
-            continue;
+            continue;*/
         }
         
         // Decode header line.
@@ -309,12 +344,15 @@ int main(int argc, char *argv[])
         // Create socket
         sockfd = socket(AF_INET, SOCK_STREAM, 0);
         
+  
+
         // Connect socket to server
         if (connect(sockfd, res_addr->ai_addr, res_addr->ai_addrlen) == -1) {
             cerr << "Error: Could not connect to server" << endl;
             return -1;
         }
-        
+
+
         string message = "GET " + urlstring + " HTTP/1.0\r\n"
         "Host: " + host + "\r\n"
         "Connection: close\r\n"
