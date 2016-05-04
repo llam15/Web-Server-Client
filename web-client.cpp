@@ -37,45 +37,6 @@ void usage_msg()
     exit(0);
 }
 
-void downloadFile(HttpResponse response) { //404 400 200 408
-    if (response.getStatus() == "404") { //404
-        cerr << "Error: The document contained in: " << URL << " is not found." << endl;
-        return;
-    }
-    else if (response.getStatus() == "400") { //400
-        cerr << "Error: There is a syntax error in the request: " << URL << endl;
-        return;
-    }
-    else if (response.getStatus() == "408") { //408
-        cerr << "Error: The request timed out." << endl;
-        return;
-    }
-    else { //200 success, just download file
-        string filenamestring(FILENAME);
-        //if file is /, change it to index.hmtl
-        if (filenamestring == "/" || filenamestring.size() == 0) {
-            FILENAME = (char*) "index.html";
-        }
-        else {
-            int pos = filenamestring.find_last_of('/');
-            filenamestring = filenamestring.substr(pos + 1, -1);
-            FILENAME = (char*) filenamestring.c_str();
-            //make FILENAME point to current directory
-        }
-        vector<char> payload = response.getPayload();
-        remove(FILENAME); //Deletes the file with the same name, so the new downloaded one can replace
-        
-        //Create output stream to filename specified by FILENAME
-        ofstream output_file(FILENAME);
-        
-        //Outputs the contents of the vector to the file
-        ostream_iterator<char> it(output_file);
-        copy(payload.begin(), payload.end(), it);
-        output_file.close();
-        cerr << "Successfully downloaded file: " << FILENAME << endl;
-    }
-}
-
 void readResponse(int sockfd) {
     vector<char> buffer(4096);
     vector<char>::iterator it1, it2;
@@ -140,18 +101,50 @@ void readResponse(int sockfd) {
         
         // Consecutive CRLFs. End of HTTP Request
         if (it1 == it2) {
-            // Now get the payload
-            string content_length = response.getHeader("Content-Length");
-            if (content_length == "") {
-                cerr << "Error: Could not get content length" << endl;
+            if (response.getStatus() == "404") { //404
+                cerr << "Error: The document contained in: " << URL << " is not found." << endl;
                 return;
             }
-            int size = stoi(content_length);
-            vector<char> payload(size);
+            else if (response.getStatus() == "400") { //400
+                cerr << "Error: There is a syntax error in the request: " << URL << endl;
+                return;
+            }
+            else if (response.getStatus() == "408") { //408
+                cerr << "Error: The request timed out." << endl;
+                return;
+            }
+            else { //200 success, just download file
+                string filenamestring(FILENAME);
+                //if file is /, change it to index.hmtl
+                if (filenamestring == "/" || filenamestring.size() == 0) {
+                    FILENAME = (char*) "index.html";
+                }
+                else {
+                    int pos = filenamestring.find_last_of('/');
+                    filenamestring = filenamestring.substr(pos + 1, -1);
+                    FILENAME = (char*) filenamestring.c_str();
+                    //make FILENAME point to current directory
+                }
+                vector<char> payload = response.getPayload();
+                remove(FILENAME); //Deletes the file with the same name, so the new downloaded one can replace
+            }
+            
+            //Create output stream to filename specified by FILENAME
+            ofstream output_file(FILENAME);
+            
+            //Outputs the contents of the vector to the file
+            ostream_iterator<char> it(output_file);
+            
+            // Now get the payload
+//            string content_length = response.getHeader("Content-Length");
+//            if (content_length == "") {
+//                cerr << "Error: Could not get content length" << endl;
+//                return;
+//            }
+//            int size = stoi(content_length);
+            vector<char> payload(256000);
             dist_from_end = distance(it1, buffer.end());
             if (dist_from_end < 2) {
-                if (dist_from_end == 1)
-                    throw_away_next = true;
                 it1 = buffer.end();
             }
             else {
@@ -159,50 +152,26 @@ void readResponse(int sockfd) {
             }
             int bodybytes_read = totalbytes_read - (int) distance(buffer.begin(), it1);
             it2 = next(it1, bodybytes_read);
-            payload.insert(payload.begin(), it1, it2);
-            payload.resize(size);
-            if (throw_away_next) {
-                bytes_read = recv(sockfd, &buffer[0], 1, 0);
-            }
-
-            bool data_read = true;
-            clock_t start = clock();
-            clock_t current_time = clock();
+            
+            it = copy(it1, it2, it);
+            
             //If the buffer is smaller than the payload size
-            while (bodybytes_read < size && (((current_time - start)/ (double) CLOCKS_PER_SEC) <  timeout_duration) )  {
+            do {
                 //Read in next bytes from socket
-                bytes_read = recv(sockfd, &payload[bodybytes_read], payload.size() - bodybytes_read, 0);
+                bytes_read = recv(sockfd, &payload[0], payload.size(), 0);
 
                 if (bytes_read == -1) {
                     cerr << "Error: Could not read from socket." << endl;
                     return;
                 }
-                else if (bytes_read == 0) {
-                    data_read = false;
-                    current_time = clock();
-                }
-                else {
-                    bodybytes_read += bytes_read;
-                    start = current_time = clock();
-                    data_read = true;
-
-                }
+                
+                it = copy(payload.begin(), payload.begin() + bytes_read, it);
                 //Set it1 to beginning of new buffer
-            }
-
-            if (data_read == false) {
-                //cerr << "Error: Socket has been closed by the server. The file name contained in: " << URL << " may be invalid." << endl;
-                cerr << "Error: The request timed out. File name may be invalid." << endl;
-                return;
-            }
-
-            response.setPayload(payload);
-
-            downloadFile(response);
-            break;
-          
-
-
+            } while (bytes_read != 0);
+            
+            output_file.close();
+            
+            return;
         }
         
         // We reached end of buffer, but only received part of the message!
