@@ -24,6 +24,8 @@
 
 using namespace std;
 
+const timeval TIMEOUT{5, 0};
+
 double timeout_duration = 5;
 
 char* HOSTNAME;
@@ -183,49 +185,20 @@ void readResponse(int sockfd) {
             copy(it1, buffer.end(), buffer.begin());
 
 
-            clock_t start = clock();
-            clock_t current_time = clock();
+            // Read in next section of request
+            bytes_read = recv(sockfd, &buffer[read_location], buffer.size()-read_location, 0);
 
-            bool data_read = true;
-
-            while(((current_time - start)/ (double) CLOCKS_PER_SEC) <  timeout_duration) {
-                // Read in next section of request
-                bytes_read = recv(sockfd, &buffer[read_location], buffer.size()-read_location, 0);
-
-                if (bytes_read == -1) {
-                    cerr << "Error: Could not read from socket." << endl;
-                    return;
-                }
-                else if (bytes_read == 0) {
-                    //cerr << "Error: Socket has been closed by the server. The file name contained in: " << URL << " may be invalid." << endl;
-                    current_time = clock();
-                    data_read = false;
-                }
-                else {
-                    totalbytes_read += bytes_read;
-                    data_read = true;
-                    // If throw away next, that means we only got the first half of CRLF previously.
-                    // Ignore the first character (which should be a \n)
-                    if (throw_away_next) {
-                        it1 = buffer.begin()+1;
-                    }
-                    else {
-                        it1 = buffer.begin();
-                    }
-                    break;
-                }
-            }
-
-            if (data_read == false) {
-                //cerr << "Error: Socket has been closed by the server. The file name contained in: " << URL << " may be invalid." << endl;
-                cerr << "Error: The request timed out. File name may be invalid." << endl;
+            if (bytes_read == -1) {
+                cerr << "Error: Could not read from socket." << endl;
                 return;
             }
-
-            continue;
-
-            /*totalbytes_read += bytes_read;
-
+            else if (bytes_read == 0) {
+                cerr << "Error: Socket has been closed by the server. The file name contained in: " << URL << " may be invalid." << endl;
+                return;
+            }
+            
+            totalbytes_read += bytes_read;
+            
             // If throw away next, that means we only got the first half of CRLF previously.
             // Ignore the first character (which should be a \n)
             if (throw_away_next) {
@@ -234,7 +207,7 @@ void readResponse(int sockfd) {
             else {
                 it1 = buffer.begin();
             }
-            continue;*/
+            continue;
         }
         
         // Decode header line.
@@ -313,7 +286,12 @@ int main(int argc, char *argv[])
         // Create socket
         sockfd = socket(AF_INET, SOCK_STREAM, 0);
         
-  
+        //Set socket options to include timeout after 5 seconds
+        if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &TIMEOUT, sizeof(timeval)) == -1) {
+            cerr << "Error: Could not set socket options" << endl;
+            close(sockfd);
+            return -1;
+        }
 
         // Connect socket to server
         if (connect(sockfd, res_addr->ai_addr, res_addr->ai_addrlen) == -1) {
