@@ -26,8 +26,6 @@ using namespace std;
 
 const timeval TIMEOUT{5, 0};
 
-double timeout_duration = 5;
-
 char* HOSTNAME;
 char* PORT;
 char* FILENAME;
@@ -53,6 +51,13 @@ void readResponse(int sockfd) {
     while (1) {
         bytes_read = recv(sockfd, &buffer[read_location], buffer.size()-read_location, 0);
 
+        // If errno set, then time out
+        if ((errno == EAGAIN) || (errno == EWOULDBLOCK) ||(errno ==  EINPROGRESS)) {
+            // Timed out
+            cerr << "Error: The response timed out." << endl;
+            return;
+        }
+
         if (bytes_read == -1) {
             cerr << "Error: Could not read from socket." << endl;
             return;
@@ -73,11 +78,6 @@ void readResponse(int sockfd) {
             break;
         }
     }
-
-    /*for (int i = 0; i < 80; i++) {
-        cout << buffer[i] << " ";
-
-    }*/
 
     response.decodeFirstLine(vector<char>(buffer.begin(), it1));
 
@@ -138,12 +138,6 @@ void readResponse(int sockfd) {
             ostream_iterator<char> it(output_file);
             
             // Now get the payload
-//            string content_length = response.getHeader("Content-Length");
-//            if (content_length == "") {
-//                cerr << "Error: Could not get content length" << endl;
-//                return;
-//            }
-//            int size = stoi(content_length);
             vector<char> payload(256000);
             dist_from_end = distance(it1, buffer.end());
             if (dist_from_end < 2) {
@@ -162,6 +156,12 @@ void readResponse(int sockfd) {
                 //Read in next bytes from socket
                 bytes_read = recv(sockfd, &payload[0], payload.size(), 0);
 
+                // If errno set, then time out
+                if ((errno == EAGAIN) || (errno == EWOULDBLOCK) ||(errno ==  EINPROGRESS)) {
+                    // Timed out
+                    cerr << "Error: Response timed out." << endl;
+                    return;
+                }
                 if (bytes_read == -1) {
                     cerr << "Error: Could not read from socket." << endl;
                     return;
@@ -187,6 +187,13 @@ void readResponse(int sockfd) {
 
             // Read in next section of request
             bytes_read = recv(sockfd, &buffer[read_location], buffer.size()-read_location, 0);
+
+            // If errno set, then time out
+            if ((errno == EAGAIN) || (errno == EWOULDBLOCK) ||(errno ==  EINPROGRESS)) {
+                // Timed out
+                cerr << "Error: Response timed out." << endl;
+                return;
+            }
 
             if (bytes_read == -1) {
                 cerr << "Error: Could not read from socket." << endl;
